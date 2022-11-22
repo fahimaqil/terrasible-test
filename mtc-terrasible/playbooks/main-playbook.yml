@@ -1,0 +1,79 @@
+---
+- name: Install Prometheus
+  hosts: hosts
+  become: yes
+  vars:
+    listen_address: 0.0.0.0
+    listen_port: 9090
+  
+  tasks: 
+  - name: Download Prometheus
+    get_url:
+      url: https://github.com/prometheus/prometheus/releases/download/v2.30.3/prometheus-2.30.3.linux-amd64.tar.gz
+      dest: /home/ubuntu/
+  - name: Unzip Prometheus
+    ansible.builtin.unarchive:
+      src: /home/ubuntu/prometheus-2.30.3.linux-amd64.tar.gz
+      dest: /home/ubuntu/
+      remote_src: yes
+  - name: Create Prometheus group
+    ansible.builtin.group:
+      name: prometheus
+      state: present
+  - name: Create Prometheus user
+    ansible.builtin.user:
+      name: prometheus
+      group: prometheus
+      shell: /sbin/nologin 
+  - name: Create prometheus directories
+    ansible.builtin.file:
+      path: "{{ item }}"
+      state: directory
+      recurse: yes
+      owner: prometheus
+      group: prometheus
+    loop:
+      - /etc/prometheus
+      - /etc/prometheus/rules
+      - /etc/prometheus/rules.d
+      - /etc/prometheus/files_sd
+      - /var/lib/prometheus
+  - name: set perms
+    ansible.builtin.file:
+      path: "{{ item }}"
+      mode: '0755'
+    loop:
+      - /etc/prometheus
+      - /var/lib/prometheus
+  - name: Copy files 
+    ansible.builtin.copy:
+      src: "{{ item }}"
+      dest: /usr/local/bin
+      remote_src: yes
+      mode: '0755'
+      owner: prometheus
+      group: prometheus
+    loop:
+      - /home/ubuntu/prometheus-2.30.3.linux-amd64/prometheus
+      - /home/ubuntu/prometheus-2.30.3.linux-amd64/promtool
+  - name: Copy more files 
+    ansible.builtin.copy:
+      src: "{{ item }}"
+      dest: /etc/prometheus
+      remote_src: yes
+    loop:
+      - /home/ubuntu/prometheus-2.30.3.linux-amd64/consoles
+      - /home/ubuntu/prometheus-2.30.3.linux-amd64/console_libraries
+  - name: Create Config File
+    ansible.builtin.template:
+      src: prometheus.yml.j2
+      dest: /etc/prometheus/prometheus.yml
+  - name: Create Systemd File
+    ansible.builtin.template:
+      src: prometheus.service.j2
+      dest: /etc/systemd/system/prometheus.service
+  - name: Make sure Prometheus is started
+    ansible.builtin.systemd:
+      state: started
+      enabled: yes
+      name: prometheus
